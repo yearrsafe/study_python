@@ -1,0 +1,153 @@
+1.创建爬虫项目
+    scrapy startproject 项目名
+    要求:不允许数字开头，不能包含中文
+2.创建爬虫文件:
+    在spiders文件夹下去创建爬虫文件
+    先进入spiders文件夹：cd scrapy_study1\scrapy_study1\spiders        cd 项目名\项目名\spiders
+
+    创建爬虫文件:scrapy genspider 爬虫文件的名字 要爬取的网页  (这里以百度网页为例: scrapy genspider bd_test www.baidu.com)
+            要爬取的网页一般不加http协议
+
+3.运行爬虫代码:
+    scrapy crawl 爬虫名字       例如：scrapy crawl bd_test
+    在运行之前，要将settings文件中的ROBOTSTXT_OBEY = True注释掉，否则不能进行爬取
+
+
+
+
+
+1.scrapy项目的结构:
+    项目名字
+        项目名字
+            spider文件夹->存储爬虫文件
+                init
+                自定义的爬虫文件->核心功能文件
+            init
+            items->定义数据结构的地方，包括爬取的数据
+            middleware->中间件 设置代理
+            pipelines->管道 用来处理下载的数据
+            settings->配置文件，robots协议，ua定义等
+
+
+2.response的属性和方法
+    response.text       获取的是响应的字符串
+    response.body       获取的是二进制数据
+    response.xpath()        可以直接使用xpath去解析获取的内容
+    response.extract    提取selector对象的data属性值
+    response.extract_first()    提取selector列表里的第一个数据
+
+
+
+
+1.scrapy的工作原理
+    1、引擎向spiders要url
+    2、引擎将要爬取的ur给调度器
+    3、调度器会将ur生成请求对象放入到指定的队列中
+    4、从队列中出队一个请求
+    5、引擎将请求交给下载器进行处理
+    6、下载器发送请求获取互联网数据
+    7、下载器将数据返回给引擎
+    8、引擎将数据再次给到spiders
+    9、spiders通过xpath解析该数据，得到数据或者url
+    10、spiders将数据或者url给到引擎
+    11、引擎判断该数据 是数据还是url，是数据，交给管道（pipeline）处理，是url交给调度器处理
+
+
+
+1.scrapy shell：是scrapy的终端，能够在不启动spider的前提下尝试和调试代码，不需要每次都启用spider
+    进入scrapy shell:pycharm终端运行->scrapy shell 网址
+    返回的response等内容可以直接使用
+
+
+
+1.items的解释
+    items存储的是数据结构，通俗来讲就是存储要下载哪些数据
+    根据下载内容的不同，需要提前对其定义，也就是提前进行编辑items
+    src=scrapy.Field()      name=scrapy.Field()
+2.pipelines的解释
+    items是在下载之前先打招呼，那么获取到了数据就需要下载到本地，下载到本地就需要pipelines
+    为了成功下载，需要在items中去提前告知下载内容，即需要借用items中的数据结构，也就是需要引用items的类
+
+    *为了能够使用这个类，还需要进行导入包：from 文件名.items import 类名         这里可能会报错，不过没问题
+     设置参数 all_name=类名(参数)      这里的类名是items中的类，参数是你提前设置好的数据结构
+     这一步的意义在于将你多种的数据打包为一个数据(all_name)，方便调用
+
+    *打包完后，可以进行下载
+     需要将打包好的all_name交给pipelines进行下载，这里的yield相当于return      yield all_name
+
+    *为了能够使用pipelines，我们需要在settings中来进行设置开启管道：将ITEM_PIPELINES取消注释
+     这里这个列表中的value值代表优先级，范围在1-1000，越小优先级越高
+
+    *开始下载，打开pipelines文件可知，方法内有个item参数，这里的item参数就是之前的打包好的数据all_name
+     继续使用with open('文件名','a',encoding='utf-8') as f:
+                f.write(str(all_name))
+
+            return item
+     这里需要说明的是，open方法内写入方式要选择a，否则会把之前写的内容覆盖；write方法只能写入字符串，需要进行强转
+     在这里还有个问题，如果需要下载多组数据，all_name的数量过大，会导致文件的频繁读取，建议换种方法
+
+     *在pipelines自带方法前加入打开文件方法:def open_f(self,item,spider):
+                                           self.fp=open('文件名','w',encoding='utf-8')
+                 自带方法后加入关闭文件操作: def close_f(self,item,spider):
+                                           self.fp.close()
+                 自带方法的方法体修改为:self.fp.write(str(item))
+
+3.多管道下载
+    同时开启多条管道，步骤：
+        （1）定义管道类
+        （2）在settings中开启管道
+
+    *定义管道类：
+        定义一个新的类，内含的方法可以参照上一个类的方法
+    *在settings中开启管道：
+        在打开原来管道的旁边，模仿写你新定义的类的字典，并赋予其优先级来保证先下载哪个再下载哪个
+
+4.使用伪递归来进行多页下载
+    在自己创建的文件中的类里，定义了parse方法，这个方法是用于单页下载的；为了能够多页下载，需要重复调用该方法
+    先定义page=1;找到不同页之间网址的区别
+    在page=1的时候先进行parse方法；方法结束后去进行if的条件判断
+    判断page是否超出范围，如果没有就+1，更新网址，返回Request方法：yield scrapy.Request(url=更新后网址参数,callback=self.parse)     再次声明，这里的yield相当于return
+    这里的scrapy.Request就是scrapy的get请求，callback就是递归使用的函数，callback对应的方法不需要加括号
+
+    在多页下载中，要修改allow_domains的值，修改为域名(该参数是创建文件下自带的参数)
+
+
+
+
+
+1.日志信息和日志等级
+    日志信息记录的是终端输出内容，日志登记限制了终端输出的内容
+    日志信息和日志等级都在settings里设置
+    日志等级：LOG_LEVEL='WARNING'/'DEBUG'
+    日志信息：LOG_FILE='logdemo.log'     将日志信息存在了logdemo文件里
+
+
+
+
+1.scrapy的post请求
+    post请求如果没有参数，则该请求没有意义->start_url参数和parse方法都没用了
+    post请求的参数在请求头的form data(负载)中
+
+    由于parse方法失效，于是定义新方法start_request(self):
+    url=''
+    data={
+        ''=''
+    }
+    yield scrapy.FormRequest(url=url,formdata=data,callback=self.parse_second)
+
+    由于返回的方法的参数callback有新的方法，于是继续定义
+    import json
+    def parse_second(self,response)
+        content=response.text
+        #这里的content编码有问题，需要导入json包进行解析
+        obj=json.loads(content,encoding='utf-8')
+
+
+
+
+
+
+
+
+
+
